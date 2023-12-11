@@ -1,0 +1,210 @@
+---
+title: "Projet R"
+author: "Souhail LYAMANI, Anass EL MOUBARAKI, Achraf DRISSI, Zakariae MAAYZOU"
+date: "2023-01-08"
+output:
+
+ prettydoc::html_pretty:
+    theme: hpstr
+    highlight: github
+    toc: true 
+    toc_depth: 2 
+    css: style.css
+---
+
+```{r, include=FALSE}
+pacman::p_load(
+  rio,           # import/export
+  tidyverse,     # data mgmt and viz
+  naniar,        # assess and visualize missingness
+  mice           # missing data imputation
+)
+knitr::opts_chunk$set(echo = TRUE)
+library(corrr) 
+library(tidyverse)
+library(readr)
+library(corrplot)
+library(skimr)
+library(randomForest)
+library(VIM)
+```
+
+## **Thyroid disease**
+
+La thyroïde est un organe richement vascularisé (on y retrouve deux artères principales).De ce fait un bon fonctionnement de la thyroïde est indispensable pour assurer une activité du cœur normal et par conséquent être en bonne santé. De ce fait, une mise en lumière des causes des maladies thyroïdiennes  mais aussi de leur contribution à l’aggravement de la maladie (les causes peuvent être des  facteurs de risques, facteurs aggravants ou des signes d’alarmes) se voit primordiale notamment pour le secteur de la sante (par exemple pour réaliser des diagnostics de la thyroïde).
+Dans ce contexte s’intègre notre étude qui a pour objectif : étudier l’influence de 28 facteurs (l’âge, le sexe, l’état des hormones thyroïdiennes…) sur l’état de la thyroïde mais aussi la relation qui lie ces facteurs de risques et de leur corrélation et ce en s’appuyant sur une base de données contenant les informations de différents patients. L’exploitation de cette base pour exhiber des modèles de prédictions et d’estimations mais aussi pour la visualisation se fera via le langage R .
+
+### *Exploration des données :*
+
+Dans ce rapport, nous allons essayer d'explorer les données et de les exploiter pour proposer des visualisations pertinentes ainsi que des résumés évocateurs, menant à la découverte de faits intéressants sur la maladie.
+
+Ci-joint,un échantillon de la base de données :
+
+```{r}
+setwd("C:/Users/Ossama/Desktop")
+library(readr)
+thyroid <- read_csv("thyroid.csv")
+
+head(thyroid)
+```
+
+Notre base de données contient *`r nrow(thyroid)`* lignes (patients).
+Un problème apparait lors de la l'importation, on utilisera le code suivant pour le voir:
+
+```{r}
+problems(thyroid)
+```
+
+Certaines données de la ligne 16 ne satisfont pas les règles des variables de notre base de données, on choisit de les laisser et continuer ainsi.  
+
+### *Résumé rapide des données*
+
+Voici un résumé rapide mais utile de nos données, pour nous donner une idée de quoi s'iagit-il. On rentrera dans les détails plus loin.
+
+```{r}
+skim(thyroid)
+```
+
+
+### *Un aperçu sur nos données manquantes :*
+
+On jette un coup d'oeil sur les données manquantes de notre base de données:
+
+On a en total `r sum(is.na(thyroid))` données manquantes, voyons leur répartition sur toutes les variables:
+
+```{r}
+vis_miss(thyroid)
+```
+
+Un plot additif visualisant plus la distribution de nos données manquantes :
+
+```{r}
+gg_miss_var(thyroid, show_pct = TRUE)
+```
+
+Voyons ainsi cette répartition par rapport à `ThryroidClass`:
+
+```{r}
+thyroid %>% 
+  gg_miss_var(show_pct = TRUE, facet = ThryroidClass)
+```
+ 
+La question qui se pose, dans cette perspective, se présente de la sorte :
+- Comment imputer les données manquantes.
+On a ,alors, recouru à la méthode K_nearest_neighbors pour faire la tâche de l'imputation de nos données manquantes.
+Effectivement, KNN est un algorithme utile pour faire correspondre un point avec ses k voisins les plus proches dans un espace multidimensionnel. Il peut être utilisé pour des données continues, discrètes, ordinales et catégorielles, ce qui le rend particulièrement utile pour traiter toutes sortes de données manquantes.
+
+L'hypothèse sous-jacente à l'utilisation de KNN pour les valeurs manquantes est qu'une valeur de point peut être approximée par les valeurs des points qui en sont les plus proches, en fonction d'autres variables.
+
+Nous allons alors créer une copie de notre dataset après imputation :
+
+```{r}
+
+thyroid_fill<-kNN(thyroid,c("patient_age","TSH_reading","T3_reading","T4_reading","thyrox_util_rate_T4U_reading",	"FTI_reading"),k=5)
+skim(thyroid_fill)
+```
+ Et voilà, il n' y a plus de valeurs manquantes.
+
+
+### *Selection des variables : *
+
+D'abord, on a choisi  d'implémenter un model RandomForest ; qui est bien sûr déjà éxistant, pour faire la selection de variables.
+En effet, la sélection de fonctionnalités à l'aide de la forêt aléatoire relève de la catégorie des méthodes intégrées. Les méthodes embarquées combinent les qualités des méthodes de filtrage et d'encapsulation. Ils sont implémentés par des algorithmes qui ont leurs propres méthodes de sélection de fonctionnalités intégrées. Certains des avantages des méthodes embarquées sont :
+
+- Ils sont très précis.
+- Ils généralisent mieux.
+-Ils sont interprétables
+
+```{r}
+data<-na.omit(thyroid)
+data %>% 
+  select(-ref_src)
+data$ThryroidClass = factor(data$ThryroidClass)
+rfModel <-randomForest(ThryroidClass ~ ., data = data)
+
+importance(rfModel)
+```
+
+D'après cette petite analyse, il s'avère que les variables suivantes sont les plus intéressantes et qui nous donnent plus de précision quant à la classification des patients :
+`patient_age`, `patient_gender`, `TSH_reading`, `T3_reading`, `T4_reading`, `thyrox_util_rate_T4U_reading` et `FTI_reading`.
+
+### *Quelques visualisations simples : *
+
+Alors, on commence par la variable `patient_age`.
+```{r}
+temp <- thyroid %>% 
+  select(patient_age, ThryroidClass) %>% 
+  group_by(patient_age, ThryroidClass) %>% 
+  summarise(total = n())
+temp %>% ggplot()+geom_line(aes(patient_age,total,color=ThryroidClass))
+```
+
+
+On constate que cette maladie touche les gens à partir de *15* ans, mais encore plus de gens dans la tranche d'age [40:80] ans. Mais on doit se méfier de ces jugement sur ces visualisations, on doit comparer les proportions gens malades/testés, en effet plus on grandit plus on a intérêt à faire des tests.
+
+
+Quant à la variable `patient_gender`, une petite documentation sur internet nous mène à déduire que la maladie en question touche plûtot les femmes, voyons est-ce que c'est conforme à nos données?
+
+```{r}
+thyroid %>% 
+  select(patient_gender, ThryroidClass) %>% 
+  group_by(patient_gender, ThryroidClass) %>% 
+  #summarise(total = n()) %>% 
+  ggplot()+
+  geom_bar(aes(x=patient_gender, fill=ThryroidClass))
+```
+
+Il faut signaler que notre dataset n'est pas assez large pour déduire quant à la prédominece de la maladie chez les femmes. Mais ce résultat reste aussi validé par nos données malgré qu'il n'ya pas un très grande différence.
+
+### *T4 Rate / T3 Rate / TSH Rate/ FTI Rate / T4U Rate : *
+
+Passons aux variables `TSH_reading`, `T3_reading`, `T4_reading`, `thyrox_util_rate_T4U_reading` et `FTI_reading`. 
+Ces variables sont-elles corrélées??
+
+```{r}
+temp <- thyroid %>% select(TSH_reading, T3_reading, T4_reading, thyrox_util_rate_T4U_reading , FTI_reading)
+temp <- na.omit(temp)
+M <- cor(temp)
+corrplot(M, method="number")
+```
+
+Donc on constate que `T4_reading` est bien corrélé avec `T3_reading`, `thyrox_util_rate_T4U_reading` et `FTI_reading`. Pour `TSH_reading`, on va l'étudier à part.
+
+On commence par `T4_reading`:
+
+```{r}
+thyroid %>% 
+  select(T4_reading, ThryroidClass) %>% 
+  ggplot()+geom_boxplot(aes(x=ThryroidClass, y=T4_reading))
+```
+
+Puis `FTI_reading`:
+
+```{r}
+thyroid %>% 
+  select(FTI_reading, ThryroidClass) %>% 
+  ggplot()+geom_boxplot(aes(x=ThryroidClass, y=FTI_reading))
+```
+
+et `thyrox_util_rate_T4U_reading`:
+
+```{r}
+thyroid %>% 
+  select(thyrox_util_rate_T4U_reading, ThryroidClass) %>% 
+  ggplot()+geom_boxplot(aes(x=ThryroidClass, y=thyrox_util_rate_T4U_reading))
+```
+
+la variable `thyrox_util_rate_T4U_reading` donne une distinction entre `sick` et `negative`, enfin on essaiera avec la variable `T3_reading`
+
+```{r}
+thyroid %>% 
+  select(T3_reading, ThryroidClass) %>% 
+  ggplot()+geom_boxplot(aes(x=ThryroidClass, y=T3_reading))
+```
+
+
+
+ 
+ 
+
+
